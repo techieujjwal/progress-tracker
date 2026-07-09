@@ -92,7 +92,7 @@ export const cloudService = {
 
   async pushProfile(userId: string, profile: UserProfile, xp: number, level: number, publicSharing: boolean): Promise<void> {
     if (!supabase) return;
-    await supabase.from('profiles').upsert({
+    const { error } = await supabase.from('profiles').upsert({
       id: userId,
       username: profile.username,
       avatar_url: profile.avatarUrl,
@@ -105,6 +105,7 @@ export const cloudService = {
       level,
       updated_at: new Date().toISOString()
     });
+    if (error) throw error;
   },
 
   async pullProfile(userId: string): Promise<{ profile: Partial<UserProfile>; xp: number; level: number; publicSharing: boolean } | null> {
@@ -135,7 +136,8 @@ export const cloudService = {
     const batchSize = 50;
     for (let i = 0; i < rows.length; i += batchSize) {
       const batch = rows.slice(i, i + batchSize);
-      await supabase.from('logs').upsert(batch, { onConflict: 'user_id,date' });
+      const { error } = await supabase.from('logs').upsert(batch, { onConflict: 'user_id,date' });
+      if (error) throw error;
     }
   },
 
@@ -175,7 +177,8 @@ export const cloudService = {
       tasks: t.tasks,
       updated_at: new Date().toISOString()
     }));
-    await supabase.from('templates').upsert(rows, { onConflict: 'id,user_id' });
+    const { error } = await supabase.from('templates').upsert(rows, { onConflict: 'id,user_id' });
+    if (error) throw error;
   },
 
   async pullTemplates(userId: string): Promise<TimetableTemplate[]> {
@@ -195,12 +198,13 @@ export const cloudService = {
 
   async pushSingleLog(userId: string, date: string, tasks: Task[]): Promise<void> {
     if (!supabase) return;
-    await supabase.from('logs').upsert({
+    const { error } = await supabase.from('logs').upsert({
       user_id: userId,
       date,
       tasks,
       updated_at: new Date().toISOString()
     }, { onConflict: 'user_id,date' });
+    if (error) throw error;
   },
 
   async fetchPublicProfile(username: string): Promise<PublicProfile | null> {
@@ -235,15 +239,8 @@ export const cloudService = {
 
     const mergedLogs = { ...localState.logs };
     Object.entries(cloudLogs).forEach(([date, cloudTasks]) => {
-      const localTasks = mergedLogs[date];
-      if (!localTasks || localTasks.length === 0) {
+      if (cloudTasks && cloudTasks.length > 0) {
         mergedLogs[date] = cloudTasks;
-      } else {
-        const localCompletedCount = localTasks.filter(t => t.completed).length;
-        const cloudCompletedCount = cloudTasks.filter(t => t.completed).length;
-        if (cloudCompletedCount > localCompletedCount) {
-          mergedLogs[date] = cloudTasks;
-        }
       }
     });
 

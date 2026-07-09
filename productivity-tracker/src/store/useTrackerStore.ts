@@ -26,8 +26,12 @@ function debouncedCloudSync(state: UserState) {
       );
       await cloudService.pushTemplates(authState.session.user.id, state.templates);
       useAuthStore.getState().setSyncStatus('synced');
-    } catch {
+    } catch (e: any) {
+      console.error('Failed to sync cloud data:', e);
       useAuthStore.getState().setSyncStatus('error');
+      try {
+        useTrackerStore.getState().addSystemLog('error', `Cloud sync failed: ${e?.message || JSON.stringify(e)}`);
+      } catch {}
     }
   }, 2000);
 }

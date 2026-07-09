@@ -5,6 +5,7 @@ import { useTrackerStore } from './store/useTrackerStore';
 import { useAuthStore } from './store/useAuthStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { cloudService } from './services/cloudSync';
+import { storageService } from './services/storage';
 import BlobBackground from './components/BlobBackground';
 import LoadingSkeleton from './components/LoadingSkeleton';
 import Hero from './components/Hero';
@@ -92,6 +93,7 @@ export default function App() {
         const publicSharing = useAuthStore.getState().publicSharing;
         const merged = await cloudService.fullSync(authSession.user.id, state, publicSharing);
         useTrackerStore.setState(merged);
+        storageService.saveState(merged);
         setSyncStatus('synced');
       } catch (e) {
         console.error('Failed to sync cloud data:', e);
