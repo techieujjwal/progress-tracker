@@ -78,23 +78,28 @@ export default function App() {
         await loadPublicProfile(publicUser);
       }
 
-      if (authSession) {
-        try {
-          setSyncStatus('syncing');
-          const state = useTrackerStore.getState();
-          const publicSharing = useAuthStore.getState().publicSharing;
-          const merged = await cloudService.fullSync(authSession.user.id, state, publicSharing);
-          useTrackerStore.setState(merged);
-          setSyncStatus('synced');
-        } catch {
-          setSyncStatus('error');
-        }
-      }
-
       setTimeout(() => setIsLoading(false), 800);
     };
     init();
   }, []);
+
+  useEffect(() => {
+    if (!authSession) return;
+    const sync = async () => {
+      try {
+        setSyncStatus('syncing');
+        const state = useTrackerStore.getState();
+        const publicSharing = useAuthStore.getState().publicSharing;
+        const merged = await cloudService.fullSync(authSession.user.id, state, publicSharing);
+        useTrackerStore.setState(merged);
+        setSyncStatus('synced');
+      } catch (e) {
+        console.error('Failed to sync cloud data:', e);
+        setSyncStatus('error');
+      }
+    };
+    sync();
+  }, [authSession]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', profile.theme);

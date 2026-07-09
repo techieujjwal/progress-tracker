@@ -128,7 +128,7 @@ export const cloudService = {
     const rows = Object.entries(logs).map(([date, tasks]) => ({
       user_id: userId,
       date,
-      tasks: JSON.stringify(tasks),
+      tasks,
       updated_at: new Date().toISOString()
     }));
 
@@ -172,7 +172,7 @@ export const cloudService = {
       id: t.id,
       user_id: userId,
       name: t.name,
-      tasks: JSON.stringify(t.tasks),
+      tasks: t.tasks,
       updated_at: new Date().toISOString()
     }));
     await supabase.from('templates').upsert(rows, { onConflict: 'id,user_id' });
@@ -198,7 +198,7 @@ export const cloudService = {
     await supabase.from('logs').upsert({
       user_id: userId,
       date,
-      tasks: JSON.stringify(tasks),
+      tasks,
       updated_at: new Date().toISOString()
     }, { onConflict: 'user_id,date' });
   },
