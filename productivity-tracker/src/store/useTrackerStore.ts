@@ -4,6 +4,38 @@ import { timetableTemplate, initialTemplates } from '../data/timetableTemplate';
 import { storageService } from '../services/storage';
 import { getDatesRange, getInitialSelectedDate } from '../utils/dateHelpers';
 import { calculateDayEfficiency, calculateStreaks } from '../utils/trackerCalculations';
+import { cloudService } from '../services/cloudSync';
+import { useAuthStore } from './useAuthStore';
+
+let syncTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function debouncedCloudSync(state: UserState) {
+  if (syncTimeout) clearTimeout(syncTimeout);
+  syncTimeout = setTimeout(async () => {
+    const authState = useAuthStore.getState();
+    if (!authState.session || !cloudService.available) return;
+    try {
+      useAuthStore.getState().setSyncStatus('syncing');
+      await cloudService.pushLogs(authState.session.user.id, state.logs);
+      await cloudService.pushProfile(
+        authState.session.user.id,
+        state.profile,
+        state.xp,
+        state.level,
+        authState.publicSharing
+      );
+      await cloudService.pushTemplates(authState.session.user.id, state.templates);
+      useAuthStore.getState().setSyncStatus('synced');
+    } catch {
+      useAuthStore.getState().setSyncStatus('error');
+    }
+  }, 2000);
+}
+
+function persistState(state: UserState) {
+  storageService.saveState(state);
+  debouncedCloudSync(state);
+}
 
 interface TrackerActions {
   setSelectedDate: (date: string) => void;
@@ -225,7 +257,7 @@ export const useTrackerStore = create<TrackerStore>((set, get) => ({
 
     set(nextState);
     get().updateGoalsProgress();
-    storageService.saveState(get());
+    persistState(get());
 
     return { levelUp, perfectDay, unlockedBadges };
   },
@@ -242,13 +274,13 @@ export const useTrackerStore = create<TrackerStore>((set, get) => ({
 
     const newLogs = { ...state.logs, [date]: updatedTasks };
     set({ logs: newLogs, lastSynced: new Date().toISOString() });
-    storageService.saveState(get());
+    persistState(get());
   },
 
   resetTracker: () => {
     const fresh = generateEmptyState();
     set(fresh);
-    storageService.saveState(fresh);
+    persistState(fresh);
   },
 
   exportTrackerData: () => {
@@ -305,7 +337,7 @@ export const useTrackerStore = create<TrackerStore>((set, get) => ({
           lastSynced: new Date().toISOString()
         });
         get().updateGoalsProgress();
-        storageService.saveState(get());
+        persistState(get());
         return true;
       }
       return false;
@@ -399,14 +431,14 @@ export const useTrackerStore = create<TrackerStore>((set, get) => ({
 
   triggerManualSync: () => {
     set({ lastSynced: new Date().toISOString() });
-    storageService.saveState(get());
+    persistState(get());
   },
 
   updateUserProfile: (profileUpdates: Partial<UserProfile>) => {
     set(state => {
       const nextProfile = { ...state.profile, ...profileUpdates };
       const nextState = { ...state, profile: nextProfile, lastSynced: new Date().toISOString() };
-      storageService.saveState(nextState);
+      persistState(nextState);
       return { profile: nextProfile };
     });
   },
@@ -415,7 +447,7 @@ export const useTrackerStore = create<TrackerStore>((set, get) => ({
     set(state => {
       const newTemplates = [...state.templates, template];
       const nextState = { ...state, templates: newTemplates, lastSynced: new Date().toISOString() };
-      storageService.saveState(nextState);
+      persistState(nextState);
       return { templates: newTemplates };
     });
     get().addSystemLog('info', `Created timetable template: ${template.name}`);
@@ -430,7 +462,7 @@ export const useTrackerStore = create<TrackerStore>((set, get) => ({
         return t;
       });
       const nextState = { ...state, templates: newTemplates, lastSynced: new Date().toISOString() };
-      storageService.saveState(nextState);
+      persistState(nextState);
       return { templates: newTemplates };
     });
   },
@@ -440,7 +472,7 @@ export const useTrackerStore = create<TrackerStore>((set, get) => ({
       const newTemplates = state.templates.filter(t => t.id !== templateId);
       const activeTemplateId = state.activeTemplateId === templateId ? 'default' : state.activeTemplateId;
       const nextState = { ...state, templates: newTemplates, activeTemplateId, lastSynced: new Date().toISOString() };
-      storageService.saveState(nextState);
+      persistState(nextState);
       return { templates: newTemplates, activeTemplateId };
     });
     get().addSystemLog('info', `Deleted template: ${templateId}`);
@@ -481,7 +513,7 @@ export const useTrackerStore = create<TrackerStore>((set, get) => ({
       set(prev => {
         const newLogs = { ...prev.logs, [date]: newTasks };
         const nextState = { ...prev, logs: newLogs, activeTemplateId: templateId, lastSynced: new Date().toISOString() };
-        storageService.saveState(nextState);
+        persistState(nextState);
         return { logs: newLogs, activeTemplateId: templateId };
       });
       get().updateGoalsProgress();
@@ -502,7 +534,7 @@ export const useTrackerStore = create<TrackerStore>((set, get) => ({
     set(prev => {
       const newLogs = { ...prev.logs, [date]: newTasks };
       const nextState = { ...prev, logs: newLogs, lastSynced: new Date().toISOString() };
-      storageService.saveState(nextState);
+      persistState(nextState);
       return { logs: newLogs };
     });
     get().updateGoalsProgress();
@@ -515,7 +547,7 @@ export const useTrackerStore = create<TrackerStore>((set, get) => ({
     set(prev => {
       const newLogs = { ...prev.logs, [date]: newTasks };
       const nextState = { ...prev, logs: newLogs, lastSynced: new Date().toISOString() };
-      storageService.saveState(nextState);
+      persistState(nextState);
       return { logs: newLogs };
     });
     get().updateGoalsProgress();
@@ -533,7 +565,7 @@ export const useTrackerStore = create<TrackerStore>((set, get) => ({
     set(prev => {
       const newLogs = { ...prev.logs, [date]: newTasks };
       const nextState = { ...prev, logs: newLogs, lastSynced: new Date().toISOString() };
-      storageService.saveState(nextState);
+      persistState(nextState);
       return { logs: newLogs };
     });
     get().updateGoalsProgress();
@@ -550,7 +582,7 @@ export const useTrackerStore = create<TrackerStore>((set, get) => ({
       };
       const newFeedback = [rec, ...state.feedback];
       const nextState = { ...state, feedback: newFeedback, lastSynced: new Date().toISOString() };
-      storageService.saveState(nextState);
+      persistState(nextState);
       return { feedback: newFeedback };
     });
   },
@@ -565,7 +597,7 @@ export const useTrackerStore = create<TrackerStore>((set, get) => ({
       };
       const newLogs = [logItem, ...state.systemLogs].slice(0, 100);
       const nextState = { ...state, systemLogs: newLogs };
-      storageService.saveState(nextState);
+      persistState(nextState);
       return { systemLogs: newLogs };
     });
   }

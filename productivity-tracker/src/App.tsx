@@ -2,7 +2,9 @@ import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import Lenis from 'lenis';
 import gsap from 'gsap';
 import { useTrackerStore } from './store/useTrackerStore';
+import { useAuthStore } from './store/useAuthStore';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { cloudService } from './services/cloudSync';
 import BlobBackground from './components/BlobBackground';
 import LoadingSkeleton from './components/LoadingSkeleton';
 import Hero from './components/Hero';
@@ -16,6 +18,9 @@ import SettingsSection from './components/SettingsSection';
 import AdminPanel from './components/AdminPanel';
 import HelpModal from './components/HelpModal';
 import CommandPalette from './components/CommandPalette';
+import AuthOverlay from './components/AuthOverlay';
+import SyncStatusBadge from './components/SyncStatusBadge';
+import PublicDashboard from './components/PublicDashboard';
 import * as Tabs from '@radix-ui/react-tabs';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -52,16 +57,43 @@ export default function App() {
   const profile = useTrackerStore(state => state.profile);
   const level = useTrackerStore(state => state.level);
 
+  const authSession = useAuthStore(s => s.session);
+  const initializeAuth = useAuthStore(s => s.initializeAuth);
+  const isPublicViewMode = useAuthStore(s => s.isPublicViewMode);
+  const loadPublicProfile = useAuthStore(s => s.loadPublicProfile);
+  const setSyncStatus = useAuthStore(s => s.setSyncStatus);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 1000);
-    return () => clearTimeout(timer);
+    const init = async () => {
+      await initializeAuth();
+
+      const params = new URLSearchParams(window.location.search);
+      const publicUser = params.get('u');
+      if (publicUser) {
+        await loadPublicProfile(publicUser);
+      }
+
+      if (authSession) {
+        try {
+          setSyncStatus('syncing');
+          const state = useTrackerStore.getState();
+          const publicSharing = useAuthStore.getState().publicSharing;
+          const merged = await cloudService.fullSync(authSession.user.id, state, publicSharing);
+          useTrackerStore.setState(merged);
+          setSyncStatus('synced');
+        } catch {
+          setSyncStatus('error');
+        }
+      }
+
+      setTimeout(() => setIsLoading(false), 800);
+    };
+    init();
   }, []);
 
   useEffect(() => {
@@ -153,6 +185,10 @@ export default function App() {
     return <LoadingSkeleton />;
   }
 
+  if (isPublicViewMode) {
+    return <PublicDashboard />;
+  }
+
   return (
     <div className="min-h-screen text-white relative flex flex-col font-sans select-none pb-12">
       <BlobBackground />
@@ -185,6 +221,7 @@ export default function App() {
           </button>
 
           <div className="flex items-center gap-3.5">
+            <SyncStatusBadge />
             <div className="text-right hidden sm:block">
               <div className="text-xs font-bold text-white">{profile.username}</div>
               <div className="text-[9px] text-purple-400 font-bold flex items-center gap-0.5 justify-end">
@@ -323,7 +360,8 @@ export default function App() {
       </div>
 
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
-      
+      <AuthOverlay />
+
       <CommandPalette
         isOpen={isCmdKOpen}
         onClose={() => setIsCmdKOpen(false)}

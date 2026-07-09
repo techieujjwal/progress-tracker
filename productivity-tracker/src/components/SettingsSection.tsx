@@ -1,5 +1,8 @@
 import { useRef, useState } from 'react';
 import { useTrackerStore } from '../store/useTrackerStore';
+import { useAuthStore } from '../store/useAuthStore';
+import { isSupabaseConfigured } from '../services/supabaseClient';
+import { cloudService } from '../services/cloudSync';
 import { getDatesRange, formatDateLabel } from '../utils/dateHelpers';
 import { motion, AnimatePresence } from 'framer-motion';
 import { calculateDayEfficiency, calculateCodingHours, calculateHabitConsistency } from '../utils/trackerCalculations';
@@ -16,7 +19,11 @@ import {
   User,
   Sparkles,
   MessageSquare,
-  Volume2
+  Volume2,
+  Cloud,
+  LogIn,
+  LogOut,
+  Globe
 } from 'lucide-react';
 
 const AVATAR_PRESETS = [
@@ -48,6 +55,14 @@ export default function SettingsSection() {
   const importTrackerData = useTrackerStore(state => state.importTrackerData);
   const triggerManualSync = useTrackerStore(state => state.triggerManualSync);
   const lastSynced = useTrackerStore(state => state.lastSynced);
+
+  const authSession = useAuthStore(s => s.session);
+  const syncStatus = useAuthStore(s => s.syncStatus);
+  const publicSharing = useAuthStore(s => s.publicSharing);
+  const setPublicSharing = useAuthStore(s => s.setPublicSharing);
+  const setAuthModalOpen = useAuthStore(s => s.setAuthModalOpen);
+  const signOut = useAuthStore(s => s.signOut);
+  const setSyncStatus = useAuthStore(s => s.setSyncStatus);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
@@ -329,6 +344,103 @@ export default function SettingsSection() {
             ))}
           </div>
         </div>
+      </div>
+
+      <div className="bg-[#111827]/40 border border-white/5 p-6 sm:p-8 rounded-[24px] backdrop-blur-xl shadow-xl flex flex-col gap-6">
+        <div>
+          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <Cloud className="w-4 h-4 text-cyan-400" /> Cloud Sync & Authentication
+          </h3>
+          <p className="text-white/40 text-[10px] mt-0.5">Connect to Supabase for real-time cloud sync and public dashboard sharing</p>
+        </div>
+
+        {!isSupabaseConfigured ? (
+          <div className="bg-yellow-500/5 border border-yellow-500/15 rounded-xl p-4">
+            <p className="text-xs text-yellow-400 font-semibold">Cloud sync is not configured</p>
+            <p className="text-[10px] text-white/40 mt-1">Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables to enable cloud features.</p>
+          </div>
+        ) : !authSession ? (
+          <div className="flex flex-col gap-4">
+            <div className="bg-blue-500/5 border border-blue-500/15 rounded-xl p-4">
+              <p className="text-xs text-blue-400 font-semibold">Not signed in</p>
+              <p className="text-[10px] text-white/40 mt-1">Sign in to sync your data to the cloud and share your dashboard publicly.</p>
+            </div>
+            <button
+              onClick={() => setAuthModalOpen(true)}
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-bold text-white transition-colors shadow-lg shadow-blue-600/20 cursor-pointer"
+            >
+              <LogIn className="w-4 h-4" /> Sign In or Register
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between bg-emerald-500/5 border border-emerald-500/15 rounded-xl p-4">
+              <div>
+                <p className="text-xs text-emerald-400 font-semibold">Signed in as {authSession.user.email}</p>
+                <p className="text-[10px] text-white/40 mt-0.5">
+                  Status: <span className={syncStatus === 'synced' ? 'text-emerald-400' : syncStatus === 'syncing' ? 'text-blue-400' : 'text-yellow-400'}>{syncStatus}</span>
+                  {lastSynced && <span className="ml-2">Last synced: {new Date(lastSynced).toLocaleTimeString()}</span>}
+                </p>
+              </div>
+              <button
+                onClick={async () => {
+                  setSyncStatus('syncing');
+                  try {
+                    const state = useTrackerStore.getState();
+                    const merged = await cloudService.fullSync(authSession.user.id, state, publicSharing);
+                    useTrackerStore.setState(merged);
+                    setSyncStatus('synced');
+                    showSuccess('Cloud sync completed');
+                  } catch {
+                    setSyncStatus('error');
+                  }
+                }}
+                className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[10px] font-bold text-white cursor-pointer transition-colors flex items-center gap-1.5"
+              >
+                <RefreshCw className={`w-3 h-3 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} /> Sync Now
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-xl">
+              <div className="flex items-center gap-2.5">
+                <Globe className="w-4 h-4 text-purple-400" />
+                <div>
+                  <p className="text-xs font-semibold text-white">Public Dashboard Sharing</p>
+                  <p className="text-[10px] text-white/40">Allow others to view your progress at ?u={profile.username}</p>
+                </div>
+              </div>
+              <button
+                onClick={async () => {
+                  const newVal = !publicSharing;
+                  setPublicSharing(newVal);
+                  if (authSession) {
+                    await cloudService.pushProfile(authSession.user.id, profile, xp, level, newVal);
+                  }
+                  showSuccess(newVal ? 'Public sharing enabled' : 'Public sharing disabled');
+                }}
+                className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer ${
+                  publicSharing ? 'bg-blue-500' : 'bg-white/10'
+                }`}
+              >
+                <div
+                  className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                    publicSharing ? 'translate-x-5' : 'translate-x-0.5'
+                  }`}
+                />
+              </button>
+            </div>
+
+            <button
+              onClick={async () => {
+                await signOut();
+                showSuccess('Signed out successfully');
+              }}
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-semibold text-white/60 hover:text-white transition-colors cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" /> Sign Out
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="bg-[#111827]/40 border border-white/5 p-6 sm:p-8 rounded-[24px] backdrop-blur-xl shadow-xl flex flex-col gap-6">
