@@ -71,12 +71,25 @@ export default function App() {
 
   useEffect(() => {
     const init = async () => {
+      const trackerStore = useTrackerStore.getState();
+      trackerStore.addSystemLog('info', `Checking connection configuration...`);
+      trackerStore.addSystemLog('info', `Supabase URL configured: ${import.meta.env.VITE_SUPABASE_URL ? 'YES' : 'NO'}`);
+      trackerStore.addSystemLog('info', `Supabase Anon Key configured: ${import.meta.env.VITE_SUPABASE_ANON_KEY ? 'YES' : 'NO'}`);
+
       await initializeAuth();
 
       const params = new URLSearchParams(window.location.search);
       const publicUser = params.get('u');
       if (publicUser) {
+        trackerStore.addSystemLog('info', `Public view request detected for user: ${publicUser}`);
         await loadPublicProfile(publicUser);
+      }
+
+      const freshSession = useAuthStore.getState().session;
+      if (freshSession) {
+        trackerStore.addSystemLog('info', `Active cloud session restored for: ${freshSession.user.email}`);
+      } else {
+        trackerStore.addSystemLog('warn', `No active cloud session. Running in local/offline state.`);
       }
 
       setTimeout(() => setIsLoading(false), 800);
